@@ -49,7 +49,7 @@ manufacturing-ai/
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/ai-manufacturing-intelligence.git
+git clone https://github.com/Sai-Ramya-prog/ai-manufacturing-intelligence.git
 cd ai-manufacturing-intelligence
 ```
 
