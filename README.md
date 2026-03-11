@@ -96,5 +96,3 @@ uvicorn app.api:app --port 8000
 ## 👥 Team
 Code4Carbon — AVEVA National AI/ML Hackathon 2025
 
-## 📄 License
-MIT License
