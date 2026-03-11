@@ -1,0 +1,136 @@
+{
+  "feature_cols": [
+    "Granulation_Time",
+    "Binder_Amount",
+    "Drying_Temp",
+    "Drying_Time",
+    "Compression_Force",
+    "Machine_Speed",
+    "Lubricant_Conc",
+    "Moisture_Content",
+    "Tablet_Weight",
+    "Hardness",
+    "Disintegration_Time",
+    "process_energy_kwh",
+    "peak_power_kw",
+    "power_variability",
+    "avg_vibration",
+    "asset_health_score"
+  ],
+  "target_cols": [
+    "Content_Uniformity",
+    "Dissolution_Rate",
+    "Friability",
+    "Disintegration_Time"
+  ],
+  "metrics": {
+    "Content_Uniformity": {
+      "model": "RandomForest",
+      "cv_r2": 0.9727,
+      "test_r2": 0.9782,
+      "test_mae": 0.3918,
+      "test_rmse": 0.526,
+      "test_mape": 0.39
+    },
+    "Dissolution_Rate": {
+      "model": "RandomForest",
+      "cv_r2": 0.9668,
+      "test_r2": 0.9625,
+      "test_mae": 0.5381,
+      "test_rmse": 0.8469,
+      "test_mape": 0.62
+    },
+    "Friability": {
+      "model": "RandomForest",
+      "cv_r2": 0.9754,
+      "test_r2": 0.9784,
+      "test_mae": 0.0253,
+      "test_rmse": 0.041,
+      "test_mape": 5.47
+    },
+    "Disintegration_Time": {
+      "model": "RandomForest",
+      "cv_r2": 0.9819,
+      "test_r2": 0.9666,
+      "test_mae": 0.3855,
+      "test_rmse": 0.712,
+      "test_mape": 3.32
+    }
+  },
+  "shap_importance": {
+    "Content_Uniformity": {
+      "Machine_Speed": 0.6722303231625189,
+      "Hardness": 0.4854758414757927,
+      "Granulation_Time": 0.3802030835535321,
+      "Disintegration_Time": 0.33950774474549816,
+      "Compression_Force": 0.2986211744868003,
+      "Moisture_Content": 0.2833272802398096,
+      "Binder_Amount": 0.26525055629186794,
+      "Lubricant_Conc": 0.2614600538318126
+    },
+    "Dissolution_Rate": {
+      "Machine_Speed": 1.479071761063568,
+      "Disintegration_Time": 0.656684821068549,
+      "Hardness": 0.45786355627637293,
+      "Drying_Time": 0.43845575657246233,
+      "Compression_Force": 0.250533709535609,
+      "Drying_Temp": 0.22322399699720033,
+      "Binder_Amount": 0.21081474764229935,
+      "Lubricant_Conc": 0.20271660550728163
+    },
+    "Friability": {
+      "Hardness": 0.037146518621912254,
+      "Drying_Time": 0.036659879188675436,
+      "Machine_Speed": 0.03391360189381582,
+      "Compression_Force": 0.028149242236407135,
+      "Disintegration_Time": 0.027889356940433305,
+      "Lubricant_Conc": 0.026865368054133903,
+      "Tablet_Weight": 0.024654105003950336,
+      "Granulation_Time": 0.024089412627316478
+    },
+    "Disintegration_Time": {
+      "Machine_Speed": 0.4181645962114395,
+      "Disintegration_Time": 0.39163190458879055,
+      "Hardness": 0.38985916077118826,
+      "Granulation_Time": 0.3368402004643562,
+      "Drying_Time": 0.31993365961662157,
+      "Binder_Amount": 0.30954010289881945,
+      "Lubricant_Conc": 0.2948140361419305,
+      "Moisture_Content": 0.21004501940775744
+    }
+  },
+  "golden_signature": {
+    "parameters": {
+      "Granulation_Time": 9.0,
+      "Binder_Amount": 5.8,
+      "Drying_Temp": 73.0,
+      "Drying_Time": 15.0,
+      "Compression_Force": 18.0,
+      "Machine_Speed": 92.0,
+      "Lubricant_Conc": 0.4,
+      "Moisture_Content": 3.6,
+      "Tablet_Weight": 204.7,
+      "Hardness": 135.0,
+      "Disintegration_Time": 17.5,
+      "process_energy_kwh": 76.738,
+      "peak_power_kw": 66.067,
+      "power_variability": 16.399,
+      "avg_vibration": 2.91,
+      "asset_health_score": 47.874
+    },
+    "targets_achieved": {
+      "Content_Uniformity": 106.3,
+      "Dissolution_Rate": 81.2,
+      "Friability": 0.29,
+      "Disintegration_Time": 17.5
+    },
+    "batch_index": 50
+  },
+  "dataset_info": {
+    "total_batches": 60,
+    "train_batches": 48,
+    "test_batches": 12,
+    "n_features": 16,
+    "note": "Features from real production data only. Energy features from real process sensor data."
+  }
+}
