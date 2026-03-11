@@ -5,6 +5,8 @@ import joblib
 import json
 import sys
 import warnings
+import plotly.express as px
+import plotly.graph_objects as go
 warnings.filterwarnings('ignore')
 from pathlib import Path
 
@@ -319,8 +321,7 @@ with tab2:
         return pd.read_excel(BASE_DIR / "data" / "_h_batch_process_data.xlsx")
 
     process_df = load_process()
-    import plotly.express as px
-    import plotly.graph_objects as go
+    
 
     col1, col2 = st.columns(2)
     with col1:
@@ -391,7 +392,6 @@ with tab3:
     st.markdown("### 📈 SHAP Feature Importance")
     st.caption("Which parameters drive each prediction — required for adaptive target-setting and explainability.")
 
-    import plotly.graph_objects as go
 
     target_labels  = [t.replace('_', ' ').title() for t in target_cols]
     target_map     = dict(zip(target_labels, target_cols))
