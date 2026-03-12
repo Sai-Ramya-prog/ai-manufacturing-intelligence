@@ -83,8 +83,6 @@ class BatchParameters(BaseModel):
     # Tablet properties
     Tablet_Weight:      float = Field(500.0, ge=300,  le=700,  description="Tablet weight mg")
     Hardness:           float = Field(7.0,   ge=2,    le=18,   description="Hardness kg")
-    Friability:         float = Field(0.6,   ge=0.0,  le=2.5,  description="Friability %")
-    Disintegration_Time:float = Field(6.0,   ge=1.0,  le=20.0, description="Disintegration time min")
     # Energy inputs
     Power_kW:           float = Field(22.0,  ge=1.0,  le=80.0, description="Average power consumption kW")
     Vibration_mm_s:     float = Field(3.0,   ge=0.0,  le=15.0, description="Vibration mm/s")
@@ -101,59 +99,37 @@ class GoldenCompareRequest(BaseModel):
 # ── Helper: build feature vector ──────────────────────────────────────────────
 
 def build_feature_vector(params: BatchParameters) -> np.ndarray:
-    """Convert API input to full 81-feature vector matching training features."""
     feature_cols = _meta.get('feature_cols', [])
     p = params
 
-    total_energy = (p.Power_kW * (p.Granulation_Time + p.Drying_Time + 10)) / 60
-    co2 = total_energy * EMISSION_FACTOR
-
-    phases_power = {
-        'preparation':      p.Power_kW * 0.4,
-        'granulation':      p.Power_kW * 0.9,
-        'drying':           p.Power_kW * 0.7,
-        'milling':          p.Power_kW * 0.6,
-        'blending':         p.Power_kW * 0.5,
-        'compression':      p.Power_kW * 1.0,
-        'coating':          p.Power_kW * 0.8,
-        'quality_testing':  p.Power_kW * 0.3,
-    }
+    process_energy = (p.Power_kW * (p.Granulation_Time + p.Drying_Time + 10)) / 60
+    peak_power     = p.Power_kW * 1.3
+    power_var      = p.Power_kW * 0.15
+    asset_health   = max(0, 100 - (p.Vibration_mm_s / 9) * 50 - (power_var / (p.Power_kW + 1e-8)) * 50)
 
     input_dict = {
-        'Granulation_Time':     p.Granulation_Time,
-        'Binder_Amount':        p.Binder_Amount,
-        'Drying_Temp':          p.Drying_Temp,
-        'Drying_Time':          p.Drying_Time,
-        'Compression_Force':    p.Compression_Force,
-        'Machine_Speed':        p.Machine_Speed,
-        'Lubricant_Conc':       p.Lubricant_Conc,
-        'Moisture_Content':     p.Moisture_Content,
-        'Tablet_Weight':        p.Tablet_Weight,
-        'Hardness':             p.Hardness,
-        'Friability':           p.Friability,
-        'Disintegration_Time':  p.Disintegration_Time,
-        'total_energy_kwh':     total_energy,
-        'co2_kg':               co2,
-        'peak_power_kw':        p.Power_kW * 1.3,
-        'power_variability':    p.Power_kW * 0.15,
-        'asset_health_score':   max(0, 100 - (p.Vibration_mm_s / 9) * 50 - 0.15 * 50),
+        'Granulation_Time':    p.Granulation_Time,
+        'Binder_Amount':       p.Binder_Amount,
+        'Drying_Temp':         p.Drying_Temp,
+        'Drying_Time':         p.Drying_Time,
+        'Compression_Force':   p.Compression_Force,
+        'Machine_Speed':       p.Machine_Speed,
+        'Lubricant_Conc':      p.Lubricant_Conc,
+        'Moisture_Content':    p.Moisture_Content,
+        'Tablet_Weight':       p.Tablet_Weight,
+        'Hardness':            p.Hardness,
+        'Disintegration_Time': 6.0,   # default — it's a target not input
+        'process_energy_kwh':  process_energy,
+        'peak_power_kw':       peak_power,
+        'power_variability':   power_var,
+        'avg_vibration':       p.Vibration_mm_s,
+        'asset_health_score':  asset_health,
     }
 
-    for phase, pwr in phases_power.items():
-        input_dict[f'{phase}_power_mean']      = pwr
-        input_dict[f'{phase}_power_max']       = pwr * 1.3
-        input_dict[f'{phase}_power_std']       = pwr * 0.15
-        input_dict[f'{phase}_vibration_mean']  = p.Vibration_mm_s * 0.9
-        input_dict[f'{phase}_vibration_max']   = p.Vibration_mm_s * 1.2
-        input_dict[f'{phase}_temp_mean']       = p.Drying_Temp * 0.8
-        input_dict[f'{phase}_pressure_mean']   = 2.5
-        input_dict[f'{phase}_duration']        = p.Granulation_Time if 'gran' in phase else 20
-
     row = [input_dict.get(f, 0.0) for f in feature_cols]
-    return np.array([row])
+    return np.array([row]), process_energy
 
-
-def generate_recommendations(predictions: dict, params: BatchParameters) -> list:
+def generate_recommendations(predictions: dict, params: BatchParameters, proc_energy: float) -> list:
     """
     Decision support: generate specific, quantified recommendations
     tied to model predictions. Severity-ranked for operators and managers.
@@ -162,7 +138,8 @@ def generate_recommendations(predictions: dict, params: BatchParameters) -> list
     cu = predictions.get('Content_Uniformity', 98)
     dr = predictions.get('Dissolution_Rate', 88)
     fr = predictions.get('Friability', 0.5)
-    en = predictions.get('total_energy_kwh', 50)
+    dt = predictions.get('Disintegration_Time', 6)
+    en = proc_energy
     co2 = en * EMISSION_FACTOR
 
     # Quality recommendations
@@ -297,53 +274,39 @@ def health_check():
 
 @app.post("/predict", tags=["Prediction"])
 def predict_batch(params: BatchParameters):
-    """
-    Multi-target batch prediction.
-    Returns Quality, Yield, Performance and Energy predictions
-    with decision support recommendations.
-    
-    Designed for real-time integration with MES/SCADA systems.
-    """
     if not MODELS_READY:
-        raise HTTPException(503, "Models not loaded. Run train_model.py first.")
+        raise HTTPException(503, "Models not loaded.")
 
-    X = build_feature_vector(params)
+    X, proc_energy = build_feature_vector(params)
     X_scaled = _scaler.transform(X)
 
     predictions = {}
     for target in _meta['target_cols']:
-        pred = float(_models[target].predict(X_scaled)[0])
-        predictions[target] = round(pred, 4)
+        predictions[target] = round(float(_models[target].predict(X_scaled)[0]), 4)
 
-    # Add derived CO2
-    energy = predictions.get('total_energy_kwh', 0)
-    predictions['co2_kg'] = round(energy * EMISSION_FACTOR, 4)
+    # CO2 derived from input energy — not a predicted target
+    co2 = round(proc_energy * EMISSION_FACTOR, 4)
 
-    # Quality gates
     cu = predictions.get('Content_Uniformity', 0)
     dr = predictions.get('Dissolution_Rate', 0)
     fr = predictions.get('Friability', 1)
+    dt = predictions.get('Disintegration_Time', 10)
 
     quality_status = (
-        'PASS' if 98 <= cu <= 102 and dr >= 85 and fr <= 0.5
+        'PASS'        if 98 <= cu <= 102 and dr >= 85 and fr <= 0.5 and dt <= 7
         else 'CONDITIONAL' if 95 <= cu <= 105 and dr >= 75 and fr <= 1.0
         else 'FAIL'
     )
 
-    recommendations = generate_recommendations(predictions, params)
+    recommendations = generate_recommendations(predictions, params, proc_energy)
 
     return {
-        'predictions': predictions,
-        'quality_gate': quality_status,
+        'predictions':   predictions,
+        'energy_kwh':    round(proc_energy, 3),
+        'co2_kg':        co2,
+        'quality_gate':  quality_status,
         'recommendations': recommendations,
-        'model_info': {
-            t: {'model': _meta['metrics'][t]['model'],
-                'accuracy_pct': _meta['metrics'][t]['accuracy_pct'],
-                'cv_r2': _meta['metrics'][t]['cv_r2']}
-            for t in _meta['target_cols']
-        }
     }
-
 
 @app.get("/golden-signature", tags=["Golden Signature"])
 def get_golden_signature():
@@ -369,13 +332,12 @@ def compare_to_golden(request: GoldenCompareRequest):
         raise HTTPException(503, "Models not loaded.")
 
     params = request.params
-    X = build_feature_vector(params)
+    X, proc_energy = build_feature_vector(params)
     X_scaled = _scaler.transform(X)
 
     predictions = {t: float(_models[t].predict(X_scaled)[0])
                    for t in _meta['target_cols']}
-    predictions['co2_kg'] = round(predictions.get('total_energy_kwh', 0) * EMISSION_FACTOR, 4)
-
+    predictions['co2_kg'] = round(proc_energy * EMISSION_FACTOR, 4)
     golden_targets = _meta['golden_signature']['targets_achieved']
 
     gap_analysis = []
@@ -388,7 +350,7 @@ def compare_to_golden(request: GoldenCompareRequest):
             continue
         gap = pred_val - gold_val
         # For energy and friability, lower is better
-        is_improvement = gap < 0 if t in ['total_energy_kwh', 'Friability'] else gap > 0
+        is_improvement = gap < 0 if t in ['Friability', 'Disintegration_Time'] else gap > 0
         gap_analysis.append({
             'target': t,
             'predicted': round(pred_val, 3),
@@ -453,17 +415,15 @@ def feature_importance(target: str):
 
 @app.get("/targets", tags=["Model"])
 def list_targets():
-    """List all available prediction targets."""
     return {
         'targets': _meta.get('target_cols', []),
         'descriptions': {
-            'Content_Uniformity': 'Primary quality metric — ideal range 98–102',
-            'Dissolution_Rate': 'Yield proxy — target ≥85%',
-            'Friability': 'Performance metric — target ≤0.5%',
-            'total_energy_kwh': 'Energy consumption per batch — target ≤50 kWh'
+            'Content_Uniformity':  'Quality metric — ideal range 98–102',
+            'Dissolution_Rate':    'Yield proxy — target ≥85%',
+            'Friability':          'Performance metric — target ≤0.5%',
+            'Disintegration_Time': 'Process efficiency — target ≤7 min',
         }
     }
-
 
 if __name__ == "__main__":
     import uvicorn
